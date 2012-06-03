@@ -117,7 +117,7 @@
 
 -(void)sendMessage:(XPCMessage *)inMessage
 {
-    [self sendMessage:inMessage withReply:nil errorHandler:nil];
+    [self sendMessage:inMessage withReply:nil errorHandler:nil wait:NO];
 }
 
 
@@ -127,7 +127,7 @@
 
 -(void)sendMessage:(XPCMessage *)inMessage withReply:(XPCReplyHandler)replyHandler
 {
-    [self sendMessage:inMessage withReply:replyHandler errorHandler:nil];
+    [self sendMessage:inMessage withReply:replyHandler errorHandler:nil wait:NO];
 }
 
 
@@ -138,6 +138,7 @@
 -(void)sendMessage:(XPCMessage *)inMessage
          withReply:(XPCReplyHandler)replyHandler
       errorHandler:(XPCErrorHandler)errorHandler
+              wait:(BOOL)wait
 {
     // Whenever sending a message we also send the current log level
     // so the XPC service can set its log level accordingly
@@ -158,35 +159,63 @@
         dispatch_queue_t currentQueue = dispatch_get_current_queue();
         dispatch_retain(currentQueue);
         
-        dispatch_async(self.dispatchQueue, ^{
-            xpc_connection_send_message_with_reply(_connection, inMessage.XPCDictionary, currentQueue, ^(xpc_object_t event){
-                xpc_type_t type = xpc_get_type(event);
+        if(!wait) {
+            dispatch_async(self.dispatchQueue, ^{
+                xpc_connection_send_message_with_reply(_connection, inMessage.XPCDictionary, currentQueue, ^(xpc_object_t event){
+                    xpc_type_t type = xpc_get_type(event);
                 
-                if (type == XPC_TYPE_ERROR)
-                {
-                    if (errorHandler) {
-                        errorHandler([XPCMessage errorForXPCObject:event]);
-                    } else {
-                        if (event == XPC_ERROR_CONNECTION_INVALID) {
-                            // The process on the other end of the connection has either
-                            // crashed or cancelled the connection. After receiving this error,
-                            // the connection is in an invalid state, and you do not need to
-                            // call xpc_connection_cancel(). Just tear down any associated state
-                            // here.
-                            XPCLogError(@"Connection is invalid");
-                        } else if (event == XPC_ERROR_CONNECTION_INTERRUPTED) {
-                            // Handle per-connection termination cleanup.
-                            XPCLogError(@"Connection was interrupted");
+                    if (type == XPC_TYPE_ERROR)
+                    {
+                        if (errorHandler) {
+                            errorHandler([XPCMessage errorForXPCObject:event]);
+                        } else {
+                            if (event == XPC_ERROR_CONNECTION_INVALID) {
+                                // The process on the other end of the connection has either
+                                // crashed or cancelled the connection. After receiving this error,
+                                // the connection is in an invalid state, and you do not need to
+                                // call xpc_connection_cancel(). Just tear down any associated state
+                                // here.
+                                XPCLogError(@"Connection is invalid");
+                            } else if (event == XPC_ERROR_CONNECTION_INTERRUPTED) {
+                                // Handle per-connection termination cleanup.
+                                XPCLogError(@"Connection was interrupted");
+                            }
                         }
+                    } else {
+                        assert(type == XPC_TYPE_DICTIONARY);
+                        XPCMessage *replyMessage = [XPCMessage messageWithXPCDictionary:event];
+                        replyHandler(replyMessage);
                     }
-                } else {
-                    assert(type == XPC_TYPE_DICTIONARY);
-                    XPCMessage *replyMessage = [XPCMessage messageWithXPCDictionary:event];
-                    replyHandler(replyMessage);
-                }
-                dispatch_release(currentQueue);
+                    dispatch_release(currentQueue);
+                });
             });
-        });
+        }
+        else {
+            xpc_object_t event = xpc_connection_send_message_with_reply_sync(_connection, inMessage.XPCDictionary);
+            xpc_type_t type = xpc_get_type(event);
+            if (type == XPC_TYPE_ERROR)
+            {
+                if (errorHandler) {
+                    errorHandler([XPCMessage errorForXPCObject:event]);
+                } else {
+                    if (event == XPC_ERROR_CONNECTION_INVALID) {
+                        // The process on the other end of the connection has either
+                        // crashed or cancelled the connection. After receiving this error,
+                        // the connection is in an invalid state, and you do not need to
+                        // call xpc_connection_cancel(). Just tear down any associated state
+                        // here.
+                        XPCLogError(@"Connection is invalid");
+                    } else if (event == XPC_ERROR_CONNECTION_INTERRUPTED) {
+                        // Handle per-connection termination cleanup.
+                        XPCLogError(@"Connection was interrupted");
+                    }
+                }
+            } else {
+                assert(type == XPC_TYPE_DICTIONARY);
+                XPCMessage *replyMessage = [XPCMessage messageWithXPCDictionary:event];
+                replyHandler(replyMessage);
+            }
+        }
     }
 }
 

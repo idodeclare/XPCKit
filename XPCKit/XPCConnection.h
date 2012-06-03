@@ -57,6 +57,13 @@
 
 -(void)sendMessage:(XPCMessage *)message withReply:(XPCReplyHandler)replyHandler errorHandler:(XPCErrorHandler)errorHandler;
 
+// - Addition by Lukas Pitschl.
+// Sends a message to the associated connection in the XPC service and invokes the reply handler
+// on the dispatch queue of self once the associated connection sends a reply.
+// Invokes the error handler if the associated connection does not reply for whatever reasons.
+// Waits for the reply to arrive!
+-(void)sendMessage:(XPCMessage *)message withReply:(XPCReplyHandler)replyHandler errorHandler:(XPCErrorHandler)errorHandler wait:(BOOL)wait;
+
 // Sends a selector and a target and an optional object argument to the associated connection in the XPC service
 // which will invoke the selector on the (copied) target with the optional (copied) argument. Invokes the
 // return value handler on the dispatch queue of self with the (copied) return value and possibly
