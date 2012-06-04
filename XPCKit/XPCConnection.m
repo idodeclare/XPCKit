@@ -131,6 +131,10 @@
 }
 
 
+-(void)sendMessage:(XPCMessage *)message withReply:(XPCReplyHandler)replyHandler errorHandler:(XPCErrorHandler)errorHandler {
+    [self sendMessage:message withReply:replyHandler errorHandler:errorHandler wait:NO];
+}
+
 // Sends a message to the associated connection in the XPC service and invokes the reply handler
 // on the dispatch queue of self once the associated connection sends a reply.
 // Invokes the error handler if the associated connection does not reply for whatever reasons.
